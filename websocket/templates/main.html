@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Chat</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: #0e1621;
+            color: #e4e6eb;
+        }
+        
+        .header {
+            background: #17212b;
+            padding: 15px 20px;
+            border-bottom: 1px solid #242f3d;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            font-size: 18px;
+            font-weight: 500;
+        }
+        
+        .status {
+            font-size: 12px;
+            color: #7f8c8d;
+            padding: 5px 10px;
+            border-radius: 12px;
+            background: #242f3d;
+        }
+        
+        .status.connected {
+            color: #2ecc71;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            background: #5288c1;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        
+        button:hover {
+            background: #5a94d4;
+        }
+        
+        button:active {
+            background: #4a7ab1;
+        }
+        
+        button.disconnect {
+            background: #e74c3c;
+        }
+        
+        button.disconnect:hover {
+            background: #c0392b;
+        }
+        
+        #messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #0e1621;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        #messages::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        #messages::-webkit-scrollbar-track {
+            background: #17212b;
+        }
+        
+        #messages::-webkit-scrollbar-thumb {
+            background: #242f3d;
+            border-radius: 3px;
+        }
+        
+        .message-wrapper {
+            display: flex;
+            margin-bottom: 8px;
+        }
+        
+        .message-wrapper.sent {
+            justify-content: flex-end;
+        }
+        
+        .message-wrapper.received {
+            justify-content: flex-start;
+        }
+        
+        .message-wrapper.system {
+            justify-content: center;
+        }
+        
+        .message {
+            max-width: 70%;
+            padding: 10px 14px;
+            border-radius: 12px;
+            word-wrap: break-word;
+            position: relative;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        }
+        
+        .message.sent {
+            background: #5288c1;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+        
+        .message.received {
+            background: #242f3d;
+            color: #e4e6eb;
+            border-bottom-left-radius: 4px;
+        }
+        
+        .message.system {
+            background: #17212b;
+            color: #7f8c8d;
+            font-size: 12px;
+            font-style: italic;
+            padding: 6px 12px;
+            max-width: 90%;
+            text-align: center;
+        }
+        
+        .message-content {
+            line-height: 1.4;
+            margin-bottom: 4px;
+        }
+        
+        .message-time {
+            font-size: 11px;
+            opacity: 0.7;
+            text-align: right;
+            margin-top: 4px;
+        }
+        
+        .message.received .message-time {
+            text-align: left;
+        }
+        
+        .message.system .message-time {
+            display: none;
+        }
+        
+        .input-area {
+            background: #17212b;
+            padding: 15px 20px;
+            border-top: 1px solid #242f3d;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        input[type="text"] {
+            flex: 1;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 24px;
+            background: #242f3d;
+            color: #e4e6eb;
+            font-size: 14px;
+            outline: none;
+        }
+        
+        input[type="text"]:focus {
+            background: #2a3542;
+        }
+        
+        input[type="text"]::placeholder {
+            color: #7f8c8d;
+        }
+        
+        .send-button {
+            padding: 12px 24px;
+            border-radius: 24px;
+            background: #5288c1;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+        
+        .send-button:hover {
+            background: #5a94d4;
+        }
+        
+        .send-button:active {
+            background: #4a7ab1;
+        }
+        
+        .send-button:disabled {
+            background: #242f3d;
+            color: #7f8c8d;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>WebSocket Chat</h1>
+        <div class="controls">
+            <div id="status" class="status">Disconnected</div>
+            <button onclick="connect()">Connect</button>
+            <button class="disconnect" onclick="disconnect()">Disconnect</button>
+        </div>
+    </div>
+    
+    <div id="messages"></div>
+    
+    <div class="input-area">
+        <input 
+            type="text" 
+            placeholder="Type a message..." 
+            id="messageInput" 
+            onkeypress="handleKeyPress(event)"
+            disabled
+        />
+        <button class="send-button" onclick="send()" id="sendButton" disabled>Send</button>
+    </div>
+    
+    <script>
+        let ws = null;
+        let lastSentMessage = null;
+        let lastSentTime = null;
+        
+        function updateUI() {
+            const isConnected = ws && ws.readyState === WebSocket.OPEN;
+            const statusEl = document.getElementById("status");
+            const inputEl = document.getElementById("messageInput");
+            const sendButton = document.getElementById("sendButton");
+            
+            if (isConnected) {
+                statusEl.textContent = "Connected";
+                statusEl.classList.add("connected");
+                inputEl.disabled = false;
+                sendButton.disabled = false;
+            } else {
+                statusEl.textContent = "Disconnected";
+                statusEl.classList.remove("connected");
+                inputEl.disabled = true;
+                sendButton.disabled = true;
+            }
+        }
+        
+        function connect() {
+            ws = new WebSocket("ws://localhost:8000/ws");
+            
+            ws.onopen = () => {
+                updateUI();
+                addMessage("Connected to server", "system");
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                let messageText = "";
+                
+                // Format message based on type
+                if (data.type === "welcome") {
+                    messageText = data.message?.text || data.message || "Welcome!";
+                    addMessage(messageText, "received");
+                } else if (data.type === "echo") {
+                    // Echo messages from broadcaster - these are messages from other users or system
+                    // The message field contains the original broadcast message
+                    let broadcastMsg = data.message;
+                    
+                    // Handle different message structures
+                    if (broadcastMsg && typeof broadcastMsg === "object") {
+                        // If it's a notification type from periodic notifications or API
+                        if (broadcastMsg.type === "notification") {
+                            messageText = broadcastMsg.message || broadcastMsg.text || "Notification";
+                        } else {
+                            // Regular user message
+                            messageText = broadcastMsg.message || broadcastMsg.text || JSON.stringify(broadcastMsg);
+                        }
+                    } else {
+                        messageText = broadcastMsg || JSON.stringify(data);
+                    }
+                    
+                    // Check if this is our own message (sent within last 2 seconds)
+                    const now = Date.now();
+                    if (lastSentMessage === messageText && lastSentTime && (now - lastSentTime) < 2000) {
+                        // This is our own message, ignore it (we already showed it as "sent")
+                        lastSentMessage = null;
+                        lastSentTime = null;
+                        return;
+                    }
+                    
+                    addMessage(messageText, "received");
+                    return;
+                } else if (data.type === "notification") {
+                    messageText = typeof data.message === "string" 
+                        ? data.message 
+                        : data.message?.message || data.message?.text || JSON.stringify(data.message);
+                    
+                    // Check if this is our own message (sent within last 2 seconds)
+                    const now = Date.now();
+                    if (lastSentMessage === messageText && lastSentTime && (now - lastSentTime) < 2000) {
+                        // This is our own message, ignore it (we already showed it as "sent")
+                        lastSentMessage = null;
+                        lastSentTime = null;
+                        return;
+                    }
+                    
+                    addMessage(messageText, "received");
+                } else {
+                    messageText = JSON.stringify(data, null, 2);
+                    addMessage(messageText, "received");
+                }
+            };
+            
+            ws.onclose = () => {
+                updateUI();
+                addMessage("Disconnected from server", "system");
+            };
+            
+            ws.onerror = (error) => {
+                addMessage("Connection error occurred", "system");
+            };
+        }
+        
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+                updateUI();
+            }
+        }
+        
+        function send() {
+            const input = document.getElementById("messageInput");
+            const text = input.value.trim();
+            
+            if (!text || !ws || ws.readyState !== WebSocket.OPEN) {
+                return;
+            }
+            
+            // Track the sent message to avoid showing it twice
+            lastSentMessage = text;
+            lastSentTime = Date.now();
+            
+            // Display the message immediately as "sent"
+            addMessage(text, "sent");
+            
+            // Send to server
+            ws.send(JSON.stringify({type: "notification", message: text}));
+            
+            // Clear input
+            input.value = "";
+            input.focus();
+        }
+        
+        function handleKeyPress(event) {
+            if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                send();
+            }
+        }
+        
+        function addMessage(msg, type = "received") {
+            const messagesContainer = document.getElementById("messages");
+            
+            const wrapper = document.createElement("div");
+            wrapper.className = `message-wrapper ${type}`;
+            
+            const messageDiv = document.createElement("div");
+            messageDiv.className = `message ${type}`;
+            
+            const contentDiv = document.createElement("div");
+            contentDiv.className = "message-content";
+            contentDiv.textContent = msg;
+            
+            const timeDiv = document.createElement("div");
+            timeDiv.className = "message-time";
+            const now = new Date();
+            timeDiv.textContent = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            
+            messageDiv.appendChild(contentDiv);
+            if (type !== "system") {
+                messageDiv.appendChild(timeDiv);
+            }
+            
+            wrapper.appendChild(messageDiv);
+            messagesContainer.appendChild(wrapper);
+            
+            // Auto-scroll to bottom
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        // Initialize UI
+        updateUI();
+    </script>
+</body>
+</html>
